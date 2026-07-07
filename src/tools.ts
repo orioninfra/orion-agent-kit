@@ -1,6 +1,6 @@
 /**
  * Orion Celestia Intel — MCP tools.
- * Analysis layer over live Celestia data: verdicts and signals, not raw chain dumps.
+ * Analysis layer over live Celestia data: Orion's daily verdicts and anomaly signals.
  * Strictly read-only: no wallets, no keys, no transactions.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -15,10 +15,6 @@ function ok(data: unknown) {
 
 function fail(message: string) {
   return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };
-}
-
-async function withApi<T>(fn: () => Promise<T>): Promise<T> {
-  return fn();
 }
 
 function briefOf(report: Report) {
@@ -46,7 +42,7 @@ function briefOf(report: Report) {
       total_blobs_tb: s.total_blobs_tb,
       active_validators: s.active_validators,
       total_validators_registered: s.total_validators,
-      bonded_ratio_of_supply_pct: s.bonded_ratio_supply,
+      bonded_ratio_of_total_supply_pct: s.bonded_ratio_supply,
       nakamoto_coefficient_halting: s.nakamoto_halting,
       tia_price_usd: s.tia_price,
     },
@@ -56,9 +52,10 @@ function briefOf(report: Report) {
 }
 
 function reportNotFound(date: string, index: { date: string }[]) {
+  if (!index.length) return fail(`No report for ${date}, and the archive index is currently empty or unavailable.`);
   const first = index[index.length - 1]?.date;
   const last = index[0]?.date;
-  return fail(`No report for ${date}. Archive covers ${first} → ${last} (daily). Use list_reports to see available dates.`);
+  return fail(`No report for ${date}. Archive covers ${first} to ${last} (daily). Use list_reports to see available dates.`);
 }
 
 export function registerTools(server: McpServer): void {
@@ -210,17 +207,22 @@ export function registerTools(server: McpServer): void {
         const dates = index.slice(0, limit ?? 14).map((e) => e.date);
         const q = query.toLowerCase();
         const results: { date: string; matches: Signal[] }[] = [];
-        for (const date of dates) {
-          try {
-            const r = await orionApi.report(date);
+        // Fetch in bounded-concurrency batches so one slow day can't serialize the
+        // whole scan into (days x timeout) seconds; unreadable days are skipped.
+        const BATCH = 8;
+        for (let i = 0; i < dates.length; i += BATCH) {
+          const batch = dates.slice(i, i + BATCH);
+          const settled = await Promise.allSettled(batch.map((d) => orionApi.report(d)));
+          settled.forEach((outcome, j) => {
+            if (outcome.status !== "fulfilled") return;
+            const r = outcome.value;
             const matches = r.signals.filter((s) =>
               [s.title, s.detail, s.type, s.metric].some((f) => f?.toLowerCase().includes(q))
             );
-            if (matches.length) results.push({ date, matches });
-          } catch {
-            /* skip unreadable day rather than failing the whole search */
-          }
+            if (matches.length) results.push({ date: batch[j], matches });
+          });
         }
+        results.sort((a, b) => (a.date < b.date ? 1 : -1));
         return ok({
           query,
           scanned_reports: dates.length,
@@ -236,4 +238,3 @@ export function registerTools(server: McpServer): void {
 }
 
 export const SERVER_INFO = { name: "orion-celestia-intel", version: "1.0.0" };
-export { withApi };

@@ -27,11 +27,21 @@ const { tools } = await client.listTools();
 console.log(`✔ tools/list → ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
 if (tools.length !== 6) throw new Error(`expected 6 tools, got ${tools.length}`);
 
+// Pick a real archived date at runtime so the suite never fails on a data-availability
+// difference (fresh deploy, retention pruning) instead of a real regression.
+const idxRes = (await client.callTool({ name: "list_reports", arguments: { limit: 3 } })) as {
+  content?: { type: string; text?: string }[];
+};
+const idxText = idxRes.content?.find((c) => c.type === "text")?.text ?? "{}";
+const reports = (JSON.parse(idxText).reports ?? []) as { date: string }[];
+if (!reports.length) throw new Error("list_reports returned no reports");
+const probeDate = reports[Math.min(1, reports.length - 1)].date;
+
 const checks: [string, Record<string, unknown>][] = [
   ["get_daily_brief", {}],
   ["get_network_state", {}],
   ["list_reports", { limit: 5 }],
-  ["get_report", { date: "2026-07-06" }],
+  ["get_report", { date: probeDate }],
   ["get_signals", { min_severity: "info" }],
   ["search_reports", { query: "eclipse", limit: 7 }],
 ];

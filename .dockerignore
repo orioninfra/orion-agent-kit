@@ -1,0 +1,8 @@
+node_modules
+.git
+.gitignore
+docs
+.claude
+.codex
+.cursor
+*.log

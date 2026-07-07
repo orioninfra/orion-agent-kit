@@ -1,6 +1,6 @@
 # Codex CLI
 
-This repo ships `.codex/config.toml`. For a global setup, add to `~/.codex/config.toml`:
+This repo ships a `.codex/config.toml` as a template. Codex CLI reads its config from `~/.codex/config.toml`, so copy the block below there (project-level `.codex/` is not always picked up):
 
 ```toml
 [mcp_servers.orion]

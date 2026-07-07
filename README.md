@@ -2,9 +2,7 @@
 
 # Orion Agent Kit
 
-**Celestia network intelligence for AI agents — an MCP server over [Orion](https://orionlabsone.cc/celestia)'s daily analysis.**
-
-Anomaly signals · network verdicts · staking & DA metrics · full report archive — every figure traceable to its on-chain source.
+**Celestia network intelligence for AI agents.** An MCP server over [Orion](https://orionlabsone.cc/celestia)'s daily analysis: anomaly signals, network verdicts, and staking &amp; DA metrics, each figure linked back to the source it came from.
 
 [![MCP](https://img.shields.io/badge/MCP-server-6E56CF)](https://modelcontextprotocol.io)
 [![Celestia](https://img.shields.io/badge/Celestia-mainnet-7B2BF9)](https://celestia.org)
@@ -19,9 +17,9 @@ Anomaly signals · network verdicts · staking & DA metrics · full report archi
 
 Orion watches Celestia mainnet continuously and publishes a daily machine-written brief: what moved, what drifted from baseline, and why it matters. This kit exposes that analysis to AI agents over the [Model Context Protocol](https://modelcontextprotocol.io).
 
-It is the **analysis layer** of the Celestia agent ecosystem — it pairs well with knowledge bases like Blobpedia ("what is CIP-21?") and raw-data/transaction kits like Mammoblocks ("list blobs at height X"). Orion answers a different question: **"what is happening on the network right now, and is it normal?"**
+Think of it as an analysis layer for the Celestia agent ecosystem. It sits alongside knowledge bases like Blobpedia (which answer "what is CIP-21?") and raw-data or transaction kits like Mammoblocks (which list blobs or build a delegate tx). Orion answers a different question: **what is happening on the network right now, and is it normal?**
 
-**Strictly read-only.** No wallets, no keys, no transactions — nothing to secure, nothing to lose.
+The server is **read-only**. There are no wallets, keys, or transactions anywhere in it.
 
 ## Tools
 
@@ -32,9 +30,9 @@ It is the **analysis layer** of the Celestia agent ecosystem — it pairs well w
 | `get_network_state` | Current height, DA volume, validators, staking ratios, Nakamoto coefficient, TIA price |
 | `list_reports` | What daily reports exist in the archive? |
 | `get_report` | Full report for a given date |
-| `search_reports` | When did the archive last mention «eclipse» / «block time» / …? |
+| `search_reports` | When did the archive last mention "eclipse" or "block time"? |
 
-Every metric ships with **provenance** — a link to the exact Celenium / LCD / source endpoint it was read from. The agent can cite its sources; so can you.
+Each metric comes with a `provenance` link to the Celenium or LCD endpoint it was read from, so the agent can cite its sources and so can you.
 
 ## Quick start — hosted endpoint (no install)
 
@@ -73,7 +71,7 @@ claude mcp add --transport http orion https://orionlabsone.cc/mcp
 
 Per-client walkthroughs: [Claude Code](docs/claude-code.md) · [Claude Desktop](docs/claude-desktop.md) · [Cursor](docs/cursor.md) · [Codex](docs/codex.md) · [VS Code](docs/vscode.md)
 
-## Quick start — clone & chat
+## Quick start — clone &amp; chat
 
 ```bash
 git clone https://github.com/orioninfra/orion-agent-kit
@@ -84,7 +82,9 @@ claude   # Claude Code picks up .mcp.json automatically
 
 Then just ask:
 
-> *"Any anomalies on Celestia today?"* · *"How concentrated is the validator set?"* · *"When did the archive last flag block time?"* — or use the bundled `/brief` and `/signals` commands.
+> "Any anomalies on Celestia today?" · "How concentrated is the validator set?" · "When did the archive last flag block time?"
+
+The bundled `/brief` and `/signals` commands wrap the two most common queries.
 
 ## Run the server yourself
 
@@ -99,7 +99,7 @@ Environment: `PORT` (default `8791`), `HOST` (default `127.0.0.1`), `ORION_API_B
 
 ## REST, without MCP
 
-The underlying API is plain JSON — usable directly or via function calling with the [OpenAPI spec](https://orionlabsone.cc/openapi.json):
+The underlying API is plain JSON, usable directly or via function calling with the [OpenAPI spec](https://orionlabsone.cc/openapi.json):
 
 | Endpoint | Returns |
 |---|---|
@@ -122,4 +122,4 @@ orion-agent-kit  ──►  Orion daily analysis (orionlabsone.cc/api)
 
 ## License
 
-[Apache-2.0](./LICENSE). Questions, ideas, missing tools — open an issue.
+[Apache-2.0](./LICENSE), Copyright 2026 Orion Labs. Questions, ideas, or a tool you wish existed: open an issue.

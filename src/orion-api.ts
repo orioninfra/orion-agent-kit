@@ -63,9 +63,13 @@ async function getJson<T>(path: string): Promise<T> {
   try {
     const res = await fetch(`${BASE}${path}`, {
       signal: ctrl.signal,
-      headers: { "User-Agent": "orion-agent-kit/1.0", Accept: "application/json" },
+      headers: { "User-Agent": "orion-agent-kit/1.0.0", Accept: "application/json" },
     });
-    if (!res.ok) throw new OrionApiError(res.status, path);
+    if (!res.ok) {
+      // Release the connection instead of leaving an unread body pinned until GC.
+      res.body?.cancel().catch(() => {});
+      throw new OrionApiError(res.status, path);
+    }
     const data = (await res.json()) as T;
     cache.set(path, { at: Date.now(), data });
     return data;
