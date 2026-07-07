@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "orion": {
+      "type": "http",
+      "url": "https://orionlabsone.cc/mcp"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "orion-agent-kit",
+  "version": "1.0.0",
+  "description": "Orion Celestia Intel — MCP server exposing Orion's daily network analysis, anomaly signals and metrics for AI agents. Read-only: no keys, no transactions.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "homepage": "https://orionlabsone.cc/for-ai",
+  "repository": { "type": "git", "url": "https://github.com/orioninfra/orion-agent-kit" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "start:stdio": "tsx src/index.ts",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "tsx": "^4.19.0",
+    "zod": "^3.24.0"
+  }
+}

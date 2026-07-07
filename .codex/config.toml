@@ -1,0 +1,5 @@
+# Codex CLI — MCP server config.
+# Codex talks stdio; mcp-remote bridges it to the hosted HTTP endpoint.
+[mcp_servers.orion]
+command = "npx"
+args = ["-y", "mcp-remote", "https://orionlabsone.cc/mcp"]
