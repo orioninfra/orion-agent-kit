@@ -3,9 +3,17 @@
  * Analysis layer over live Celestia data: Orion's daily verdicts and anomaly signals.
  * Strictly read-only: no wallets, no keys, no transactions.
  */
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { isValidDate, orionApi, OrionApiError, Report, Signal } from "./orion-api.js";
+import {
+  isValidDate,
+  orionApi,
+  celeniumApi,
+  CELENIUM_BASE_URL,
+  OrionApiError,
+  Report,
+  Signal,
+} from "./orion-api.js";
 
 const SEVERITY_RANK: Record<string, number> = { info: 0, notable: 1, critical: 2 };
 
@@ -64,12 +72,20 @@ export function registerTools(server: McpServer): void {
     {
       title: "Today's Celestia network brief",
       description:
-        "Orion's latest daily analysis of the Celestia mainnet: headline, anomaly signals with severity, key network metrics, and provenance links for every figure. Start here for 'what is happening on Celestia today?'.",
-      inputSchema: {},
+        "Orion's latest daily analysis of the Celestia mainnet: headline, anomaly signals with severity, key network metrics, and provenance links for every figure. Start here for 'what is happening on Celestia today?'. Set include_narrative for Orion's written prose summary.",
+      inputSchema: {
+        include_narrative: z
+          .boolean()
+          .optional()
+          .describe("Also return Orion's written prose narrative (markdown, with a citation check)"),
+      },
     },
-    async () => {
+    async ({ include_narrative }) => {
       try {
-        return ok(briefOf(await orionApi.latest()));
+        const r = await orionApi.latest();
+        const out: Record<string, unknown> = briefOf(r);
+        if (include_narrative && r.narrative) out.narrative = r.narrative;
+        return ok(out);
       } catch (e) {
         return fail(String(e));
       }
@@ -234,6 +250,229 @@ export function registerTools(server: McpServer): void {
         return fail(String(e));
       }
     }
+  );
+
+  server.registerTool(
+    "get_trends",
+    {
+      title: "Network trends (day-over-day)",
+      description:
+        "Day-over-day and week-over-week change for key Celestia metrics, computed from Orion's daily snapshots. Answers 'what changed since yesterday / last week?'.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const index = await orionApi.reportIndex(); // newest first
+        const dates = index.slice(0, 8).map((e) => e.date);
+        const settled = await Promise.all(dates.map((d) => orionApi.report(d).catch(() => null)));
+        const snaps = settled.filter((r): r is Report => !!r).map((r) => ({ date: r.date, s: r.snapshot }));
+        if (snaps.length < 2) return ok({ note: "Not enough history yet — need at least 2 daily reports.", days_available: snaps.length });
+        const cur = snaps[0], prev = snaps[1], weekAgo = snaps[snaps.length - 1];
+        const pct = (a: number, b: number) => (b ? +(((a - b) / Math.abs(b)) * 100).toFixed(2) : null);
+        const trend = (m: string) => {
+          const c = Number(cur.s[m]), p = Number(prev.s[m]), w = Number(weekAgo.s[m]);
+          const d1 = c - p;
+          return {
+            current: c, day_ago: p, week_ago: w,
+            delta_1d: +d1.toFixed(6), pct_1d: pct(c, p),
+            delta_7d: +(c - w).toFixed(6), pct_7d: pct(c, w),
+            direction: d1 > 0 ? "up" : d1 < 0 ? "down" : "flat",
+          };
+        };
+        const METRICS = ["total_blobs_tb", "total_fee_tia", "tia_price", "bonded_ratio_supply", "active_validators", "jail_count", "nakamoto_halting", "total_tx"];
+        const metrics: Record<string, unknown> = {};
+        for (const m of METRICS) metrics[m] = trend(m);
+        return ok({ latest: cur.date, previous: prev.date, week_ago: weekAgo.date, window_days: snaps.length, metrics, note: "Deltas from Orion daily snapshots; each underlying figure is provenance-linked in get_report." });
+      } catch (e) {
+        return fail(String(e));
+      }
+    }
+  );
+
+  const HISTORY_METRICS = ["height", "total_fee_tia", "total_blobs_tb", "total_tx", "total_validators", "active_validators", "tia_price", "bonded_ratio", "bonded_ratio_supply", "nakamoto_halting", "jail_count"] as const;
+
+  server.registerTool(
+    "get_metric_history",
+    {
+      title: "Metric history series",
+      description: `Time series of one snapshot metric across Orion's daily reports, oldest to newest. Metrics: ${HISTORY_METRICS.join(", ")}.`,
+      inputSchema: {
+        metric: z.enum(HISTORY_METRICS).describe("Which snapshot metric to chart"),
+        days: z.number().int().min(2).max(365).optional().describe("How many recent days (default 30)"),
+      },
+    },
+    async ({ metric, days }) => {
+      try {
+        const index = await orionApi.reportIndex();
+        const dates = index.slice(0, days ?? 30).map((e) => e.date);
+        const settled = await Promise.all(dates.map((d) => orionApi.report(d).catch(() => null)));
+        const series = settled
+          .filter((r): r is Report => !!r)
+          .map((r) => ({ date: r.date, value: Number(r.snapshot[metric]) }))
+          .filter((p) => Number.isFinite(p.value))
+          .reverse();
+        return ok({ metric, points: series.length, series });
+      } catch (e) {
+        return fail(String(e));
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_top_namespaces",
+    {
+      title: "Top Celestia namespaces by DA volume",
+      description: "Largest namespaces (rollups) on Celestia by total blob size, live from Celenium. Shows who is posting the most data to the DA layer.",
+      inputSchema: { limit: z.number().int().min(1).max(50).optional().describe("How many namespaces (default 10)") },
+    },
+    async ({ limit }) => {
+      try {
+        const rows = await celeniumApi.topNamespaces(limit ?? 10);
+        const total = rows.reduce((s, n) => s + (Number(n.size) || 0), 0);
+        const namespaces = rows.map((n) => {
+          const size = Number(n.size) || 0;
+          return {
+            name: n.name || null,
+            namespace_id: n.namespace_id || null,
+            size_bytes: size,
+            size_tb: +(size / 1e12).toFixed(4),
+            blobs: n.blobs_count ?? null,
+            share_of_shown_pct: total ? +((size / total) * 100).toFixed(2) : null,
+            last_activity: n.last_message_time || null,
+          };
+        });
+        return ok({ count: namespaces.length, namespaces, source: `${CELENIUM_BASE_URL}/namespace`, note: "share_of_shown_pct is relative to the namespaces returned here, not all of Celestia." });
+      } catch (e) {
+        return fail(String(e));
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_namespace",
+    {
+      title: "Namespace detail",
+      description: "Detail for a single Celestia namespace by its namespace_id (hex — get one from get_top_namespaces): size, blob count, last activity.",
+      inputSchema: { namespace_id: z.string().min(2).describe("Namespace id (hex), e.g. from get_top_namespaces") },
+    },
+    async ({ namespace_id }) => {
+      try {
+        const arr = await celeniumApi.namespace(namespace_id);
+        const n = Array.isArray(arr) ? arr[0] : arr;
+        if (!n) return fail(`No namespace "${namespace_id}". Use get_top_namespaces for valid ids.`);
+        const size = Number(n.size) || 0;
+        return ok({
+          name: n.name || null,
+          namespace_id: n.namespace_id || namespace_id,
+          version: n.version ?? null,
+          size_bytes: size,
+          size_tb: +(size / 1e12).toFixed(4),
+          blobs: n.blobs_count ?? null,
+          pfb_count: n.pfb_count ?? null,
+          last_height: n.last_height ?? null,
+          last_activity: n.last_message_time || null,
+          source: `${CELENIUM_BASE_URL}/namespace/${namespace_id}`,
+        });
+      } catch (e) {
+        if (e instanceof OrionApiError && e.status === 404) return fail(`No namespace "${namespace_id}". Use get_top_namespaces for valid ids.`);
+        return fail(String(e));
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_top_validators",
+    {
+      title: "Top Celestia validators by stake",
+      description: "Largest Celestia validators by stake, live from Celenium: moniker, stake (TIA), commission, jailed status.",
+      inputSchema: { limit: z.number().int().min(1).max(100).optional().describe("How many validators (default 20)") },
+    },
+    async ({ limit }) => {
+      try {
+        const rows = await celeniumApi.topValidators(limit ?? 20);
+        const validators = rows
+          .map((v) => {
+            let rate = Number(v.rate) || 0;
+            if (rate > 1) rate = rate / 100;
+            const stakeUtia = Number(v.stake) || 0;
+            return { moniker: v.moniker || null, stake_tia: +(stakeUtia / 1e6).toFixed(0), commission_pct: +(rate * 100).toFixed(1), jailed: !!v.jailed };
+          })
+          .sort((a, b) => b.stake_tia - a.stake_tia);
+        return ok({ count: validators.length, validators, source: `${CELENIUM_BASE_URL}/validators` });
+      } catch (e) {
+        return fail(String(e));
+      }
+    }
+  );
+}
+
+export function registerResources(server: McpServer): void {
+  server.registerResource(
+    "latest-brief",
+    "orion://latest",
+    { title: "Latest Celestia daily brief", description: "Orion's most recent daily Celestia report (JSON).", mimeType: "application/json" },
+    async (uri) => {
+      const r = await orionApi.latest();
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(r, null, 2) }] };
+    }
+  );
+
+  server.registerResource(
+    "report-index",
+    "orion://reports",
+    { title: "Report archive index", description: "Index of Orion's daily Celestia reports (date + signal counts).", mimeType: "application/json" },
+    async (uri) => {
+      const idx = await orionApi.reportIndex();
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(idx, null, 2) }] };
+    }
+  );
+
+  server.registerResource(
+    "daily-report",
+    new ResourceTemplate("orion://report/{date}", { list: undefined }),
+    { title: "Daily Celestia report by date", description: "Full Orion report for a date: orion://report/YYYY-MM-DD.", mimeType: "application/json" },
+    async (uri, { date }) => {
+      const d = String(Array.isArray(date) ? date[0] : date);
+      if (!isValidDate(d)) throw new Error(`Invalid date "${d}" — expected YYYY-MM-DD.`);
+      const r = await orionApi.report(d);
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(r, null, 2) }] };
+    }
+  );
+}
+
+export function registerPrompts(server: McpServer): void {
+  server.registerPrompt(
+    "daily_celestia_briefing",
+    { title: "Daily Celestia briefing", description: "Produce a grounded daily briefing on Celestia using Orion's tools." },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              "Use get_daily_brief and get_signals to summarise the current state of the Celestia network. Lead with anything at notable or critical severity. Include the key metrics (DA volume in TB, active validators, staking ratio of TOTAL supply, TIA price) and cite the provenance link for each figure. If nothing is notable, say so plainly. Then call get_trends and note what changed versus yesterday.",
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerPrompt(
+    "rollup_da_check",
+    { title: "Rollup DA landscape check", description: "Survey who posts the most data to Celestia and the current DA cost context." },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              "Use get_top_namespaces to list the rollups posting the most data to Celestia right now, and get_network_state for current DA volume, fees and TIA price. Summarise the DA landscape: who dominates blobspace, how concentrated it is, and the current cost context. Cite the Celenium sources returned by the tools.",
+          },
+        },
+      ],
+    })
   );
 }
 

@@ -25,7 +25,10 @@ console.log(`✔ connected (${useStdio ? "stdio" : url})`);
 
 const { tools } = await client.listTools();
 console.log(`✔ tools/list → ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
-if (tools.length !== 6) throw new Error(`expected 6 tools, got ${tools.length}`);
+const toolNames = new Set(tools.map((t) => t.name));
+const REQUIRED_TOOLS = ["get_daily_brief", "get_signals", "get_network_state", "list_reports", "get_report", "search_reports"];
+const missingTools = REQUIRED_TOOLS.filter((n) => !toolNames.has(n));
+if (missingTools.length) throw new Error(`missing required tools: ${missingTools.join(", ")}`);
 
 // Pick a real archived date at runtime so the suite never fails on a data-availability
 // difference (fresh deploy, retention pruning) instead of a real regression.
@@ -43,6 +46,8 @@ const checks: [string, Record<string, unknown>][] = [
   ["list_reports", { limit: 5 }],
   ["get_report", { date: probeDate }],
   ["get_signals", { min_severity: "info" }],
+  ["get_trends", {}],
+  ["get_metric_history", { metric: "tia_price", days: 7 }],
   ["search_reports", { query: "eclipse", limit: 7 }],
 ];
 

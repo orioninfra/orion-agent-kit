@@ -6,7 +6,7 @@
 import { createServer, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerTools, SERVER_INFO } from "./tools.js";
+import { registerTools, registerResources, registerPrompts, SERVER_INFO } from "./tools.js";
 
 const PORT = Number(process.env.PORT ?? 8791);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -54,6 +54,8 @@ const httpServer = createServer(async (req, res) => {
       // Public read-only data, so DNS-rebinding/Origin checks are intentionally left off.
       const server = new McpServer(SERVER_INFO);
       registerTools(server);
+      registerResources(server);
+      registerPrompts(server);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
