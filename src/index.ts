@@ -4,10 +4,12 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { registerTools, SERVER_INFO } from "./tools.js";
+import { registerTools, registerResources, registerPrompts, SERVER_INFO } from "./tools.js";
 
 const server = new McpServer(SERVER_INFO);
 registerTools(server);
+registerResources(server);
+registerPrompts(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
