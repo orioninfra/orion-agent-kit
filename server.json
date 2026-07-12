@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "cc.orionlabsone/orion-agent-kit",
+  "title": "Orion Celestia Intel",
+  "description": "Celestia network intelligence for AI agents: daily analysis, anomaly signals and DA metrics.",
+  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/orioninfra/orion-agent-kit",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://orionlabsone.cc/mcp"
+    }
+  ]
+}
